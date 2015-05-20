@@ -17,6 +17,7 @@ class Cmauth {
 		$user = $this->_CI->session->userdata('user');
 
 		if($user) {
+			
 			die('we have a user');
 		}
 		return false;
