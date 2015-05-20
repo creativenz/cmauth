@@ -1,6 +1,9 @@
 <?php
 defined('BASEPATH') OR exit('No direct script access allowed');
 
+/**
+ * @file
+ */
 class Cmauth {
 
 	// Codeigniter instance
