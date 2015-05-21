@@ -15,7 +15,7 @@ class Cmauth {
 		$this->_CI->load->library(array('session'));
 	}
 
-	public static function is_user_logged_in()
+	public function is_user_logged_in()
 	{
 		$user = $this->_CI->session->userdata('user');
 
