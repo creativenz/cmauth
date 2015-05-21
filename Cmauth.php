@@ -21,8 +21,14 @@ class Cmauth {
 
 		if($user) {
 			
-			die('we have a user');
+			return $user;
 		}
 		return false;
+	}
+
+	public function log_user_in($username, $password)
+	{
+		return false;
+		
 	}
 }
