@@ -22,11 +22,11 @@ class Cmauth {
 	 */
 	public function is_user_logged_in()
 	{
-		$user = $this->_CI->session->userdata('user');
+		$id = $this->_CI->session->id;
 
-		if($user) {
+		if($id) {
 			
-			return $user;
+			return $id;
 		}
 		return false;
 	}
@@ -42,65 +42,178 @@ class Cmauth {
 	 */
 	public function log_user_in($username = null, $password = null)
 	{
+		// Test for valid username and password
+		$this->_CI->unit->run($username, 'is_string', 'Username is a string');
+		$this->_CI->unit->run($password, 'is_string', 'Password is a string');
+		
+		if (!$username || !$password) {
+			return false;
+		}
 
-		// Unit tests - username and password have been passed to function
-		$this->_CI->unit->run($username, 'is_string', 'Login username exists');
-		$this->_CI->unit->run($password, 'is_string', 'Login Password exists');
+		// Get the user if they exist
+		$query = $this->_CI->db->limit(1)->where('username', $username)->where('active', 1)->get('users');
 
-
-		if ($username && $password)
+		$error = $this->_CI->db->error();
+		$this->_CI->unit->run($error['code'], 0, 'Query on db for user', $error['message']);
+		if(0 != $error['code'])
 		{
-			// Get the user if they exist
-			$query = $this->_CI->db->limit(1)->where('username', $username)->where('active', 1)->get('users');
+			// we have a database error that needs reporting
+			return false;
+		}
 
-			/**** Unit test for query is it should return an array ****/
-			$error = $this->_CI->db->error();
-			$this->_CI->unit->run($query, 'is_object', 'Login db query for username and password', $error['message']);
-			/**** end unit test ****/
+		if($query) {
 
-			if($query) {
+			$user = $query->row();
 
-				$user = $query->row_array();
+			// If we have a user then we can check the password
+			if ($user) 
+			{
 
-				// If we have a user then we can check the password
-				if ($user) 
+				if( password_verify($password, $user->password))
 				{
-					if( password_verify($password, $user['password']))
-					{
-						// We have a user and the password matches so lets update last logged in
-						$data = array( 
-							'last_logged_in' => date('Y-m-d H:i:s'),
-						);
-						$query = $this->_CI->db->where('id', $user['id'])->update('users', $data);
-						$rows_affected = $this->_CI->db->affected_rows();
-
-						/**** Unit testing ****/ 
-
-						// Did the db query work
-						$error = $this->_CI->db->error();
-						$this->_CI->unit->run($query, 'is_true', 'Valid db query to update last login', $error['message']);
-
-						// Has a row been updated
-						$this->_CI->unit->run($rows_affected, 1, 'Updated db last login', 'User last login ' . $user['username']);
-
-						/**** End UNit Testing ****/
-
-						// Destroy all previous sessions and start from scratch
-						$this->_CI->session->sess_destroy();
-
-						// Set up a generic session for user.  Access control session should be set up
-						// as an application session as it would be different for each web site
-						$this->_CI->session->set_userdata($user);
-
-						/**** Unit Testing - check that the user session has been set ****/
-						$this->_CI->unit->run($this->_CI->session->id, 'is_numeric', 'User session set', 'Has the user id session been set');
-						/**** end unit testing ****/
-
-						return $user;
-					}
+					return $user;
 				}
 			}
+		}
+		return false;
+
+	}
+
+	public function create_user_session($user)
+	{
+		$this->_CI->unit->run($user, 'is_object', 'User object for setting session');
+		
+		$data = array( 
+			'last_logged_in' => date('Y-m-d H:i:s'),
+		);
+		$query = $this->_CI->db->where('id', $user->id)->update('users', $data);
+		
+		// Destroy all previous sessions and start from scratch
+		$this->_CI->session->unset_userdata(array('id', 'username', 'email'));
+
+		// Set session for user
+		$this->_CI->session->set_userdata(array('id' => $user->id, 'username' => $user->username, 'email' => $user->email));
+		$id = $this->_CI->session->id;
+		$this->_CI->unit->run($id, 'is_numeric', 'Session has been set for user');
+		return true;
+	}
+
+	/**
+	 * function to destroy user session and log them out
+	 *
+	 * @return boolean
+	 */
+	public function user_logout()
+	{
+		$this->_CI->session->sess_destroy();
+		return true;
+	}
+
+	/**
+	 * Function to check if user exists and then generate lost password link;
+	 *
+	 * @param string email of user
+	 * @return object user or error
+	 */
+	public function create_lostpassword_email($email = null)
+	{
+		if (!$email)
+		{
+			$error = array('error' => 'No email address passed to function');
+			return $error;
+		}
+
+		$query = $this->_CI->db->where('email', $email)->where('active', 1)->limit(1)->get('users');
+		$error = $this->_CI->db->error();
+		$this->_CI->unit->run($error['code'], 0, 'Test db for create lostpassword email', $error['message']);
+		if(0 != $error['code'])
+		{
+			// bail out if we have a database error
+			return false;
+		}
+
+		$user = $query->row();
+
+		$this->_CI->unit->run($user, 'is_object', 'Does the email match a valid user');
+
+		if ($user)
+		{
+			
+			// Lets create unique link
+			$id = md5( $this->_CI->config->item('encryption_key') . uniqid() . $email );
+			
+			$date = date('Y-m-d H:i:s', time());
+
+			$data = array(
+				'password_token' => $id,
+				'token_date' => $date
+			);
+			$this->_CI->db->where('id', $user->id);
+			$this->_CI->db->update('users', $data);
+
+			$error = $this->_CI->db->error();
+			$this->_CI->unit->run($error['code'], 0, 'DB update password token');
+
+			if(0 != $error['code'])
+			{
+				// We have a database error so bail out
+				return false;
+			}
+			else
+			{
+				$user->link = $id;
+				return $user;
+			}
+		}
+		else
+		{
 			return false;
 		}
 	}
+
+	/**
+	 * Function to check reset hash
+	 */
+	public function check_reset_hash($hash = null)
+	{
+		if (!$hash)
+		{
+			return false;
+		}
+		$hash = $this->_CI->security->xss_clean($hash);
+
+		$query = $this->_CI->db->where('password_token', $hash)->where('active', 1)->get('users');
+		$error = $this->_CI->db->error();
+		$this->_CI->unit->run($error['code'], 0, 'Database error searching for password token', $error['message']);
+		if(0 != $error['code'])
+		{
+			// Problem with the sql query - bail out
+			return false;
+		}
+
+		$user = $query->row();
+		$this->_CI->unit->run($user->id, 'is_numeric', 'User found for hashed code');
+		if (!$user)
+		{
+			return false;
+		}
+		return $user;
+	}
+
+	function password_token_date($token_date)
+	{
+		$this->_CI->unit->run($token_date, 'is_string', 'Date passed to password token date function');
+
+		$current_date = date('Y-m-d H:i:s', strtotime('-2 hours'));
+
+		// It's been more than two hours
+		if( $current_date > $token_date)
+		{
+			return false;
+		}
+		return true;
+
+	}
+
+
 }
