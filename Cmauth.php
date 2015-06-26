@@ -93,13 +93,16 @@ class Cmauth {
             'fk_organisation_id', 'fk_licensee_id', 'fk_region_id'
         ) );
 
+        echo '<pre>';
+        print_r($user);
+        echo '</pre>';
         // Lets get all the other relevant details to add to the array
         //$this->_CI->db->select('u.fk_business_id, r.name, r.role_level');
         $this->_CI->db->from('user_ass AS u');
         $this->_CI->db->join('user_roles AS r', 'u.fk_user_role_id = r.id', 'left');
         $this->_CI->db->join('user_groups AS g', 'u.fk_group_id = g.id', 'left');
         $this->_CI->db->where('u.fk_user_id', $user->id);
-        $this->_CI->db->limit(1);
+        //$this->_CI->db->limit(1);
         $query = $this->_CI->db->get();
 
         $error = $this->_CI->db->error();
@@ -108,7 +111,12 @@ class Cmauth {
             // bail out if we have a database error
             return false;
         }
-        $user_details = $query->row();
+        $user_details = $query->result();
+
+        echo '<pre>';
+        print_r($user_details);
+        echo '</pre>';
+        die();
 
         // Set session for user
         $user_data = array(
